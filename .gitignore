@@ -9,3 +9,6 @@ venv/
 .idea/
 *.log
 data/
+*.pyc
+__pycache__/
+data/
