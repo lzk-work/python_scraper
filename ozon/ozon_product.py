@@ -1,6 +1,12 @@
 """
 Ozon 单品详情爬取
 
+流程:
+  1. 给定商品 URL 或 ID，发请求拿到页面 HTML
+  2. 优先从 JSON-LD（页面里的结构化数据）提取商品信息
+  3. JSON-LD 没有就回退到 HTML 解析
+  4. 批量模式：逐个请求，每请求一个随机延时
+
 用法:
   python -m ozon.ozon_product --url "https://www.ozon.ru/product/xxx-123456789/"
   python -m ozon.ozon_product --ids "123456789,987654321"

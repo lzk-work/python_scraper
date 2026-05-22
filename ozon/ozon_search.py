@@ -1,6 +1,12 @@
 """
 Ozon 搜索结果爬取
 
+整体流程:
+  1. create_session()  → 创建 HTTP 客户端（伪装浏览器、配置重试、接入代理）
+  2. search_api()      → 发请求拿 JSON → 解析商品数据（或 search_html 备用）
+  3. 循环翻页          → 每页之间随机延时 3~6 秒，避免被封
+  4. 去重 + 存储       → 保存为 CSV 和 JSON 文件
+
 支持两种模式：
   1. API 模式（默认）— 调用 Ozon 内部 API，返回 JSON，速度快
   2. HTML 模式（备用）— 解析网页，适用于 API 变更时
@@ -36,7 +42,22 @@ FIELDS = [
 # ── API 模式 ─────────────────────────────────────────────
 
 def search_api(session, keyword: str, page: int = 1) -> list[dict]:
-    """通过 Ozon 内部 API 获取搜索结果"""
+    """通过 Ozon 内部 API 获取搜索结果
+
+    流程:
+      1. 构造请求参数（关键词 + 页码）
+      2. session.get() 发请求（等同于浏览器里按回车）
+      3. 拿到 JSON → 从 widgets 里找到 SearchResults
+      4. 逐个解析商品：标题、价格、评分、卖家等
+
+    Args:
+        session: create_session() 创建的 HTTP 客户端
+        keyword: 搜索关键词
+        page: 第几页（从 1 开始）
+
+    Returns:
+        list[dict]，每个 dict 是一个商品，包含 name/price/rating 等字段
+    """
     params = {
         "url": f"/search/?text={keyword}&from_search=true&page={page}",
         "layout_container": "SearchMegapagination",
@@ -222,14 +243,23 @@ def run(
     proxy_pool: Optional[ProxyPool] = None,
     qps: float = 0.5,
 ) -> dict:
-    """执行爬取
+    """执行爬取 — 爬虫的主入口，把所有步骤串起来
+
+    流程:
+      1. 创建 session（伪装浏览器 + 接入代理）
+      2. 循环每一页：限速等待 → 发请求 → 解析数据
+      3. 翻页间随机延时
+      4. 去重 → 保存 CSV + JSON
 
     Args:
-        keyword: 搜索关键词
-        pages: 爬取页数
-        mode: api 或 html
-        proxy_pool: 代理池，None 则直连
-        qps: 每秒请求数上限（默认 0.5，即每 2 秒一个请求）
+        keyword: 搜索关键词，比如 "蓝牙耳机"
+        pages: 爬取几页，默认 3
+        mode: "api"（调接口拿 JSON，快）或 "html"（解析网页，备用）
+        proxy_pool: 代理池，传 None 就直连（入门阶段不用管）
+        qps: 每秒最多发几个请求，默认 0.5（即每 2 秒一个，比较安全）
+
+    Returns:
+        {"total": 45, "csv": "data/ozon_xxx.csv", "json": "data/ozon_xxx.json"}
     """
     session = create_session(platform="ozon", proxy_pool=proxy_pool)
     limiter = RateLimiter(qps=qps)
